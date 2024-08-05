@@ -27,7 +27,7 @@ margin = margin_padding_and_line_thickness[0]
 padding = margin_padding_and_line_thickness[1]
 line_thickness = margin_padding_and_line_thickness[2]
 row_and_cols = [5, 7]
-col_row_size = [100, 100]
+col_row_size = [100]
 
 def load_settings():
     global row_and_cols, col_row_size, margin_padding_and_line_thickness
@@ -51,7 +51,7 @@ def load_settings():
             try:
                 col_row_size = list(map(int, content.strip().split(',')))
             except ValueError:
-                col_row_size = [100, 100]
+                col_row_size = [100]
 
 load_settings()
 
@@ -61,22 +61,19 @@ SCREEN_WIDTH = (
         (row_and_cols[0] * (col_row_size[0] + 1)) +
         (padding * row_and_cols[0])
 )
+
+# Font size #
+size = SCREEN_WIDTH // 10.5
+if size > 32:
+    size = 32
+size = int(size)
+
+
 SCREEN_HEIGHT = (
-        (margin * 2) +
-        ((row_and_cols[1] + 1) * col_row_size[1]) +
+        (margin * 2 + size) +
+        ((row_and_cols[1]) * col_row_size[0]) +
         (padding * (row_and_cols[1] + 1))
 )
-
-# Font and Font Size
-FONT = pg.font.Font(None, SCREEN_WIDTH // 10)
-RESTART_FONT = pg.font.Font(None, 32)
-
-# Create virtual board #
-# 0 means nothing the rest means balls class #
-Virtual_board = []
-current_number = 0
-Ball_colors = [None]
-rows, cols = row_and_cols
 
 def calculate_time(time):
     if time is not None:
@@ -101,6 +98,49 @@ screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pg.display.set_caption(f"Ball game; high score: {calculate_time(save_time.get_high_score(row_and_cols))}")
 pg.display.set_icon(pg.image.load('saves/icons/icon.png'))
 
+# Create font #
+FONT = pg.font.Font(None, size)
+RESTART_FONT = pg.font.Font(None, 32)
+
+time = 0
+def start_game():
+    global Virtual_board, current_number, Finished, time
+    Virtual_board = []
+    # Initialize the count of each number
+    total_cells = row_and_cols[0] * row_and_cols[1]
+    max_number = row_and_cols[0] - 1  # This determines the highest number to be used
+    max_occurrences = row_and_cols[1]
+
+    # Generate the list of numbers to fill the board
+    numbers = []
+    for num in range(1, max_number + 1):
+        numbers.extend([num] * max_occurrences)
+
+    # Randomize the order of the numbers list
+    random.shuffle(numbers)
+
+    # Ensure the numbers list is long enough to fill all rows except the last one
+    needed_numbers = (row_and_cols[0] - 1) * row_and_cols[1]
+    if len(numbers) < needed_numbers:
+        additional_numbers_needed = needed_numbers - len(numbers)
+        numbers.extend([max_number] * additional_numbers_needed)
+    numbers = numbers[:needed_numbers]
+
+    # Fill the Virtual_board
+    for row in range(row_and_cols[0]):
+        if row == row_and_cols[0] - 1:
+            # Last row should be all zeros
+            new_row = [0] * row_and_cols[1]
+        else:
+            # Populate the row with numbers
+            new_row = numbers[:row_and_cols[1]]
+            numbers = numbers[row_and_cols[1]:]
+            random.shuffle(new_row)  # Randomize the order of numbers in the row
+
+        Virtual_board.append(new_row)
+    time = 0
+    Finished = False
+
 # Draw the lines #
 button_rect = []
 def Draw_lines(screen):
@@ -108,7 +148,7 @@ def Draw_lines(screen):
     button_rect = []
 
     # Initial positions for the lines
-    start_pos = [margin + padding, margin + col_row_size[0] + padding * row_and_cols[1]]
+    start_pos = [margin + padding, col_row_size[0] + padding * row_and_cols[1]]
     end_pos = [margin + padding, SCREEN_HEIGHT - margin]
 
     # Draw the initial line
@@ -134,7 +174,9 @@ def Draw_lines(screen):
 
 show_numbers = True
 
+b_h_pos = float('inf')
 def Draw_balls(screen, mouse_x):
+    global b_h_pos
     plus_x = line_thickness + col_row_size[0]
     plus_y = col_row_size[0]
     pos = (margin + padding + line_thickness + col_row_size[0] / 2, SCREEN_HEIGHT - margin - col_row_size[0] / 2)
@@ -147,10 +189,12 @@ def Draw_balls(screen, mouse_x):
                 s_pos = (s_pos[0], s_pos[1] - plus_y)
             else:
                 break
+        if s_pos[1] < b_h_pos:
+            b_h_pos = s_pos[1]
         pos = (pos[0] + plus_x, pos[1])
     # Show selected ball
     if current_number != 0:
-        s_pos = (mouse_x, col_row_size[0])
+        s_pos = (mouse_x, b_h_pos)
         pg.draw.circle(screen, Ball_colors[current_number], s_pos, col_row_size[0] / 2 - padding)
 
 def Draw_restart_button(screen, mouse):
@@ -173,57 +217,51 @@ def Draw_restart_button(screen, mouse):
 
     return restart_rect
 
-time = 0
-def start_game():
-    global Virtual_board, current_number, Ball_colors, Finished, time
-    rows, cols = row_and_cols
-    Virtual_board = []
-    Ball_colors = [None]
-    # Initialize the count of each number
-    total_cells = rows * cols
-    max_number = rows - 1  # This determines the highest number to be used
-    max_occurrences = row_and_cols[1]
+# Create virtual board #
+# 0 means nothing the rest means balls class #
+Virtual_board = []
+current_number = 0
+def read_colors(filename):
+    similarity_threshold = 30
+    def is_similar(color1, color2, threshold):
+        return sum((a - b) ** 2 for a, b in zip(color1, color2)) ** 0.5 < threshold
 
-    # Generate the list of numbers to fill the board
-    numbers = []
-    for num in range(1, max_number + 1):
-        numbers.extend([num] * max_occurrences)
+    # Ensure the new color is not too similar to existing colors or SCREEN_FILL
+    def check_color(rgb):
+        while (any(is_similar(rgb, color, similarity_threshold) for color in colors if color)
+               or is_similar(rgb, SCREEN_FILL, similarity_threshold)):
+            rgb = (rgb[0] + random.randint(-30, 30), rgb[1] + random.randint(-30, 30), rgb[2] + random.randint(-30, 30))
+            # Clamp RGB values to stay within the range 0-255
+            rgb = tuple(min(255, max(0, c)) for c in rgb)
+        return rgb
 
-    # Randomize the order of the numbers list
-    random.shuffle(numbers)
+    with open(filename, 'r') as file:
+        lines = file.readlines()
 
-    # Ensure the numbers list is long enough to fill all rows except the last one
-    needed_numbers = (rows - 1) * cols
-    if len(numbers) < needed_numbers:
-        additional_numbers_needed = needed_numbers - len(numbers)
-        numbers.extend([max_number] * additional_numbers_needed)
-    numbers = numbers[:needed_numbers]
-
-    # Fill the Virtual_board
-    for row in range(rows):
-        if row == rows - 1:
-            # Last row should be all zeros
-            new_row = [0] * cols
+    colors = []
+    for line in lines:
+        line = line.strip()
+        if line == 'None':
+            colors.append(None)
         else:
-            # Populate the row with numbers
-            new_row = numbers[:cols]
-            numbers = numbers[cols:]
-            random.shuffle(new_row)  # Randomize the order of numbers in the row
+            # Convert the string tuple to an actual tuple
+            rgb = eval(line)
+            rgb = check_color(rgb)
+            colors.append(rgb)
+    if len(colors) < row_and_cols[0]:
 
-        Virtual_board.append(new_row)
-        # Generate colors evenly distributed in the HSV color space
-        hue = row / row_and_cols[1]  # Hue range [0, 1)
-        saturation = 0.6 + random.random() * 0.4  # Saturation range [0.6, 1)
-        value = 0.6 + random.random() * 0.4  # Value range [0.6, 1)
+        for _ in range(row_and_cols[0] - len(colors)):
+            hue = random.random()  # Random hue value between 0 and 1
+            saturation = 0.6 + random.random() * 0.4
+            value = 0.6 + random.random() * 0.4
 
-        # Convert HSV to RGB
-        rgb = colorsys.hsv_to_rgb(hue, saturation, value)
-        rgb = tuple(int(c * 255) for c in rgb)  # Convert to 0-255 range
-        if rgb == SCREEN_FILL:  # Change if the background color is the same as rgb
-            rgb = (rgb[0] - 10, rgb[1] - 20, rgb[2] - 30)
-        Ball_colors.append(rgb)
-    time = 0
-    Finished = False
+            # Convert HSV to RGB
+            rgb = colorsys.hsv_to_rgb(hue, saturation, value)
+            rgb = tuple(int(c * 255) for c in rgb)  # Convert to 0-255 range
+            rgb = check_color(rgb)
+            colors.append(rgb)
+    return colors
+Ball_colors = read_colors('saves/Ball_game_settings/colors.txt')
 
 # Main loop
 FPS = 60

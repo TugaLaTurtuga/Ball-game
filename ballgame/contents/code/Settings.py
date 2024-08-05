@@ -26,7 +26,7 @@ save_margin_padding_and_line_thickness = 'saves/Ball_game_settings/margin_paddin
 save_col_row_size = 'saves/Ball_game_settings/col_row_size.txt'
 margin_padding_and_line_thickness = [10, 5, 5]
 row_and_cols = [5, 7]
-col_row_size = [100, 100]
+col_row_size = [100]
 
 def load_settings():
     global row_and_cols, col_row_size, margin_padding_and_line_thickness
@@ -48,7 +48,7 @@ def load_settings():
             try:
                 col_row_size = list(map(int, content.strip().split(',')))
             except ValueError:
-                col_row_size = [100, 100]
+                col_row_size = [100]
     else:
         save_settings()
 
@@ -144,10 +144,8 @@ while running:
             if s_key_down == 1:
                 if col_row_size[0] - 2 > 5:
                     col_row_size[0] -= 2
-                    col_row_size[1] = col_row_size[0]
             elif s_key_down == 2:
                 col_row_size[0] += 2
-                col_row_size[1] = col_row_size[0]
             save_settings()
 
     # Render the current rows and columns
